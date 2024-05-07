@@ -1,0 +1,345 @@
+---
+author: "StatsTeam Group"
+title: "StatsTeam_final_kaggle"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 3, digits = 3)
+library(tidyverse)
+library(ggplot2)
+library(tibble)
+```
+
+## Introduction
+
+In this final Kaggle project, we will use advanced regression techniques to predict house prices based on factors such as house size, number of bedrooms, location, and many others. The dataset we will use contains information on over 1,000 houses, and our objective is to build a model that can accurately predict a house's sale price based on these features without any limit on the number of predictors that can be used for modelling. To achieve the best results, we will evaluate multiple regression methods and model evaluation performance measures. You will have a better understanding of how to use advanced regression techniques along with multi-colinearity to solve real-world problems and make accurate predictions by the end of this project.
+
+## Project Goal
+
+The goal is to create a efficient model of house prices using Linear regression technique by using the interaction. First we will create the model using the train data and get the predictions for the sale price values for the test data and submit the predictions to kaggle.
+
+## First Download and inspect data
+
+```{r message = F}
+test <- read_csv("test.csv")
+train <- read_csv("train.csv")
+submit_example <- read_csv("sample_submission.csv")
+
+```
+
+## Checking the data
+
+The data provided for the project includes the information on various aspects of residential homes in Ames,Lowa. The data contains 80 different variables where SalePrice is the target variable. The dataset is a mix of both character and integer variables which represents different features of home which will be considered while purchase of the home like the lot area, overall quality and condition of home, Garage size, age, and additional features like fireplaces, basements and many more. The target variable SalePrice is a integer variable for which we have to create a model using few predictor variables from the dataset.
+
+```{r}
+head(train)
+```
+
+## Missing data
+
+We have to check whether we have any missing data in the data as each of the values given can be the possible predictors. There are missing values in some of the variables, which will need to be addressed during the data re-modelling stage. There are several ways to address the missing data such as dropping variables or removing observations which can potentially lead to loss of data. So the missing data has to be addressed carefully. Here we are creating function to find the number of missing values in each variable. Here we are defining the function for counting the missing data. Then we are applying that function for all the columns in the train dataset.
+
+```{r}
+#creating the function to get the count of the missing data
+count_missings <- function(x) sum(is.na(x))
+
+# Getting the count of all missing values in train data using the summarize_all
+train %>% 
+  summarize_all(count_missings) 
+```
+
+## Proposed Solution for missing data
+
+We need to overwrite the existing missing values with their suitable meaningful values within the scope of the data definitions. Since, the NAs in several variables like Alley, Basement, Garage and many more represent None values so the NAs are replaced as either no or None in the train data.
+
+But most importantly there are a 259 missing values in LotFrontage variable which is a key variable and assigning 0 or dropping of this variable will lead to potential loss of a lot of data. So, we will use another approach which is to replace the missing values using the statistical methods such as mean or median. For the Lot frontage we can choose the median as this value will not be effected by the outliers present.
+
+```{r}
+train <- train %>% 
+  mutate(Alley = replace_na(data = Alley, replace = "none")) %>%
+  mutate(BsmtQual = replace_na(data = BsmtQual, replace = "none")) %>%
+  mutate(BsmtCond = replace_na(data = BsmtCond, replace = "none") ) %>%
+  mutate(PoolQC = replace_na(data = PoolQC, replace = "NoP")) %>%
+  mutate(Fence = replace_na(data = Fence, replace = "NoF")) %>%
+  mutate(MiscFeature= replace_na(data=MiscFeature, replace = "None")) %>%
+  mutate(GarageQual = replace_na(data = GarageQual, replace = "No")) %>%
+  mutate(GarageCond = replace_na(data = GarageCond, replace = "No")) %>%
+  mutate(GarageType = replace_na(data = GarageType, replace = "NoGar")) %>%
+  mutate(GarageYrBlt = replace_na(data = GarageYrBlt, replace = 0 )) %>%
+  mutate(GarageCars = replace_na(data = GarageCars, replace = 0 )) %>% 
+  mutate(GarageFinish = replace_na(data = GarageFinish, replace = "No")) %>%
+  mutate(FireplaceQu = replace_na(data = FireplaceQu, replace = "No")) %>%
+  mutate(BsmtExposure = replace_na(data = BsmtExposure, replace = "None")) %>%
+  mutate(BsmtFinType1 = replace_na(data = BsmtFinType1, replace = "No")) %>%
+  mutate(BsmtFinType2 = replace_na(data = BsmtFinType2, replace = "No")) %>%
+  mutate(LotFrontage = replace_na(LotFrontage, median(LotFrontage, na.rm = T))) %>%
+  mutate(BsmtFinSF1 = replace_na(BsmtFinSF1, median(BsmtFinSF1, na.rm = T))) %>%
+  mutate(TotalBsmtSF = replace_na(TotalBsmtSF, median(TotalBsmtSF, na.rm = T))) %>%
+  mutate(GarageArea = replace_na(GarageArea, median(GarageArea, na.rm = T)))
+
+# Check that it worked
+train %>% 
+  summarize_all(count_missings)
+
+```
+
+> After cleaning dataset to the maximum extent for the missing data, we are left with only 9 rows of data where for 8 rows the variables MasVnrType and MasVnrArea missing and for 1 row the data for electrical variable is missing which we are leaving as these variables are not being used in the regression model.
+
+## Data Visualization
+
+We need to select the predictor variables which have maximum relation to the target variable. Here, the target variable is SalePrice of the homes in Ames,Lowa. From the general knowledge of market the most common variables that effect the sale price of Home are the age, condition, quality, Garage Space, Area of houses. So first we will start with data visualization of the expected predictors to check if we can use them for creating the linear regression model. This also helps us to select the most suitable predictors for the model as we don't want to overfit the model by adding all the available predictors.
+
+```{r}
+train %>% 
+  ggplot(aes(factor(OverallQual), SalePrice)) +
+  geom_boxplot() +
+  labs(title = "SalePrice ~ OverallQual")
+```
+
+> In the plot we can see that the OverallQual variable has a postive corealtion with the target variable SalePrice. We have taken the OverallQual on the X-axis and SalePrice on Y-axis to observe the relation between those predictors.
+
+```{r}
+train %>% 
+  ggplot(aes(GrLivArea, SalePrice)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F) +
+  labs(title = "SalePrice ~ Living Area above Ground, with linear regression line")
+
+```
+
+> As we can observe from the above plot that the Living area above Ground on X-axis has a positive linear relation to the Salesprice on Y-axis. When the Area is increasing the Salesprice is also increasing.
+
+```{r}
+train %>% 
+  ggplot(aes(BsmtFinSF1)) +
+  geom_histogram() +
+  labs(title = "Histogram for Finished Basement Area")
+
+```
+
+> As we can observe from the plot apart from the value =0, the other values are forming the bell shaped curve. This indicates that the parameter have the positive regression relation to the overall data. So this predicator can be considered one of the main for the linear model. We are not taking the value =0 into consideration as if value is 0 then it means that the basement is not present in the home according to the other indications given in the data.
+
+```{r}
+train %>% 
+  ggplot(aes(LotShape)) +
+  geom_bar() +
+  labs(title = "Bar plot of Lotshape from train data")
+
+```
+
+> From the above plot we can see that in the LotShape the IR1 and Reg are most popular one while the IR2 and IR3 are not so popular. From this we can say that the Irregular type Lots have less Sales than the Regular and Slighly irregular ones.So, this can be considered as a very good predictor for calculation of SalePrice of Homes
+
+```{r}
+train %>% 
+  ggplot(aes(GarageArea, SalePrice)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F) +
+  labs(title = "SalePrice ~ GarageArea, with linear regression line")
+
+```
+
+> Similar to the Living Area we can aslo consider the factor of Garage Area as in the United States from where we are considerding the data, the people are most dependent on the personal transportation rater than public transport which makes the Garage Space most important to fit the cars they own. So when we see the Plot with GarageArea on X-axis and SalePrice on Y-axis we can see that apart from the values at GarageArea = 0, the plot is linear with positive slope. This suggests that when the Garage Space is increasing the SalePrice of those homes are also increased.
+
+```{r}
+train %>% 
+  ggplot(aes(y=Neighborhood)) +
+  geom_bar() +
+  labs(title = "Bar plot of Neighborhood from train data")
+
+```
+
+> From the above Plot we can observe how the Neighborhood will effect the sales of prices. From above plot we can observe that few Neighborhoods have large sales in homes than the others this will effect the sale Prices as the Price of houses in good neighborhood will be more than the prices of houses in bad neighborhood.
+
+> From all the above plots and other consideration we have selected the Predictors for our reggresion model and try to create the model in further steps below.
+
+## Data modeling
+
+From the 1st plot regarding the OverallQual we can understand that the variable is better as a categorical variable rather than numeric. But to get more clarity we use the statistical calculations for checking the R-squared values in linear regression model twice where the OverallQual can be used as numeric once and as factor once and compare. silimarly we compare for OverallCond too.
+
+```{r}
+lm(SalePrice ~ OverallQual, data = train) %>% summary() # R-squared .62
+lm(SalePrice ~ factor(OverallQual), data = train) %>% summary() # .68
+
+
+lm(SalePrice ~ OverallCond, data = train) %>% summary() # R-squared 0.00538
+lm(SalePrice ~ factor(OverallCond), data = train) %>% summary() # 0.1206
+```
+
+> From the above summaries we can find that the R-squared value is more when the variavle is converted to factor so we are converting the numeric variable as categorical variable in the train data as below.
+
+```{r}
+train$OverallQual <- as.factor(train$OverallQual)
+train$OverallCond <- as.factor(train$OverallCond)
+```
+
+## Cross validation
+
+Cross-validation (CV) a method to avoid over fitting by estimating the model's performance with new data. Since we will not have access to new data we will set aside a part of the available data to test the performance, while we use the remaining data to fit into the model. RMSE and R-squared on the test data will be the estimate of the model's out of sample performance. General split proportion of 70/30 is used
+
+```{r}
+# Randomly sample 70% of the rows
+set.seed(123)
+index <- sample(1:nrow(train), nrow(train)*.7, replace = F)
+
+head(index) # These are row numbers
+
+```
+
+```{r}
+# Subset train using the index to create train_fold
+train_fold <- train[index, ]
+
+# Subset the remaining row to create validation fold.
+validation_fold <- train[-index, ]
+```
+
+## Modeling Process
+
+Before the model fitting we have to decide which variable can be used for model as the selection of the predictor variables plays a very important role. The below are the variables that I have decided to select for the model as per data Visualization results above.
+
+1.  GrLivArea: From the above plot we have observed that the Living area above ground have the positive co-relation with the SalePrice. Thus we are taking this one of the main predictors for the model.
+2.  BsmtFinSF1: As the finished basement area will provide the extra space for the house so this provides a very good indicator for the SalePrice of the house.
+3.  LotShape: The shape of Lot can be a good predictor of its value. From the polt above about Lot Shape we can see that the Regular and Slightly Irregular lots have high demand in the market than the most irregular lots So this is good indicator for Sale Price of the homes.
+4.  YearBuilt: The age of house can be a good predictor of its value. If the year is recent then it will have Modern amenities or design features which may influence their price. So we are using the YearBuilt as a predictor to predict the SalePrice of the house
+5.  LotArea: The Area of the house or the area of the lot have large impact on the Sale Price. From the plots above we can see that the sale Price is high for the medium area homes rather than small or large area homes . So this predictor can provide a different dimension for the Sale Prices
+6.  LotFrontage: The area between the house entrance and road/sidewalk is called the Frontage. Similar to the Lot area this predictor will play a crucial role so can be used as one of the predictors for model fit.
+7.  GarageCars/ GarageArea: The number of cars that can be accommodated in a garage can be a significant factor in determining the price of a house. A significant space for the number of cars is very important feature for buyers. Thus this variable is very good for including in the model fit. Similarly, we can say the same for the Garage Area, which also explained in the Data Visualizations above with the linear regression line in the GarageArea \~ SalePrice Plot.
+8.  OverallQual/OverallCond: The overall quality and Condition are absolutely the main factor as the quality/condition are the main things that a buyer will look into as it will provide a direct idea of how much the house is of worth
+9.  Neighborhood: The neighborhood plays an important role in home selection as the good neighborhood houses have high demand and we can also observe this from the Bar plot of Neighborhood above.
+
+Apart from the predictors mentioned above, we have other Predictors like Total Basement Area(TotalBsmtSF), Basement Quality (BsmtQual), Exposure of Basement to outside area(BsmtExposure), Number of Fireplaces(Fireplaces), Year of remodelling(YearRemodAdd), Style of House(HouseStyle), Total Number of rooms above Ground Level(TotRmsAbvGrd), MSSubClass which tells the type of dwelling involved in the sale are effecting the Sale Price of the homes to a great extent. So we are using these predictors to build our regression model. Additionally, from the train data we can see that the LotShape, BsmtFinSF1 and GrLivArea is highly effecting the SalePrice so we are using these predictors in interaction with each other.
+
+## Model Fit
+
+By using the cross validation we have got the `train_fold` data on which we will fit model by using the above mentioned predictors using the linear regression model.
+
+```{r}
+# Fit model
+model <- lm(SalePrice ~ LotShape * BsmtFinSF1 * GrLivArea  + TotalBsmtSF +
+              LotArea + Fireplaces +  Neighborhood + OverallQual + OverallCond +
+              YearRemodAdd +  YearBuilt + HouseStyle + LotFrontage + BsmtQual +
+              MSSubClass + BsmtExposure + GarageArea + TotRmsAbvGrd , 
+            data = train_fold)
+model %>%  summary()
+```
+
+> Here we can see that the model has provided the RMSE value of 27400 and the R-squared value of 0.881 for the data on the train_fold. This can be tested now on the validation_fold to get the estimated RMSE and R-squared values.
+
+```{r}
+# Get predictions for the validation fold
+predictions <- predict(model, newdata = validation_fold)
+
+# Create functions for calculating RMSE and R-squared
+rmse <- function(observed, predicted) sqrt(mean((observed - predicted)^2))
+
+R2 <- function(observed, predicted){
+  TSS <- sum((observed - mean(observed))^2)
+  RSS <- sum((observed - predicted)^2)
+  1- RSS/TSS
+}
+
+rmse(validation_fold$SalePrice, predictions)
+R2(validation_fold$SalePrice, predictions)
+```
+
+> Now when the model is implimented to the validation_fold and we calculate the RMSE and R-squared values by using the formula we will get RMSE value as 23402 and R-squared value as 0.913 which meets the benchmark performance of 0.85 R-squared. These are the estimated RMSE and R-squared values for the test data.
+
+## Submission to kaggle
+
+Now to submit into kaggle we need to get the SalePrice variable values for the test dataset. So first create the submission model for entire train dataset
+
+```{r}
+# 1. Fit your model to the entire train set.
+submission_model <- lm(SalePrice ~ LotShape * BsmtFinSF1 * GrLivArea  + TotalBsmtSF +
+              LotArea + Fireplaces +  Neighborhood + OverallQual + OverallCond +
+              YearRemodAdd +  YearBuilt + HouseStyle + LotFrontage + BsmtQual +
+              MSSubClass + BsmtExposure + GarageArea + TotRmsAbvGrd  , 
+            data = train)
+```
+
+```{r}
+# 2. Make exactly the same changes to the test set that you made to the train set.
+test %>% 
+  summarize_all(count_missings)
+
+test <- test %>% 
+  mutate(Alley = replace_na(data = Alley, replace = "none")) %>%
+  mutate(BsmtQual = replace_na(data = BsmtQual, replace = "none")) %>%
+  mutate(BsmtCond = replace_na(data = BsmtCond, replace = "none") ) %>%
+  mutate(PoolQC = replace_na(data = PoolQC, replace = "NoP")) %>%
+  mutate(Fence = replace_na(data = Fence, replace = "NoF")) %>%
+  mutate(MiscFeature= replace_na(data=MiscFeature, replace = "None")) %>%
+  mutate(GarageQual = replace_na(data = GarageQual, replace = "No")) %>%
+  mutate(GarageCond = replace_na(data = GarageCond, replace = "No")) %>%
+  mutate(GarageType = replace_na(data = GarageType, replace = "NoGar")) %>%
+  mutate(GarageYrBlt = replace_na(data = GarageYrBlt, replace = 0 )) %>%
+  mutate(GarageCars = replace_na(data = GarageCars, replace = 0 )) %>%
+  mutate(GarageFinish = replace_na(data = GarageFinish, replace = "No")) %>%
+  mutate(FireplaceQu = replace_na(data = FireplaceQu, replace = "No")) %>%
+  mutate(BsmtExposure = replace_na(data = BsmtExposure, replace = "None")) %>%
+  mutate(BsmtFinType1 = replace_na(data = BsmtFinType1, replace = "No")) %>%
+  mutate(BsmtFinType2 = replace_na(data = BsmtFinType2, replace = "No")) %>%
+  mutate(LotFrontage = replace_na(LotFrontage, median(LotFrontage, na.rm = T))) %>%
+  mutate(BsmtFinSF1 = replace_na(BsmtFinSF1, median(BsmtFinSF1, na.rm = T))) %>%
+  mutate(TotalBsmtSF = replace_na(TotalBsmtSF, median(TotalBsmtSF, na.rm = T))) %>%
+  mutate(GarageArea = replace_na(GarageArea, median(GarageArea, na.rm = T)))
+
+test$OverallQual <- as.factor(test$OverallQual)
+test$OverallCond <- as.factor(test$OverallCond)
+
+```
+
+```{r}
+# 3. Check there are no missing observations for your selected predictors in the test set.
+test %>% 
+  summarize_all(count_missings)
+
+```
+
+```{r}
+# 4. Make predictions for the test set.
+submission_predictions <- predict(submission_model, newdata = test) # Use the newdata argument!
+
+head(submission_predictions)
+
+```
+
+```{r}
+# 5. Format your submission file.
+
+submission <- test %>% 
+  select(Id) %>% 
+  mutate(SalePrice = submission_predictions)
+
+# Check
+head(submission)
+
+
+```
+
+```{r}
+
+write.csv(submission,"submission_final.csv")
+  
+```
+
+## Kaggle Results
+
+Rank - 1951 and Score - 0.14493. This kaggle score meets the performance benchmark of 0.15.
+
+![](images/Kaggle_final_leaderboard.png)
+
+## Group Members and Contributions
+
+The StatsTeam Group is consisting of the below Group Members:
+
+1. Kushal Ram Tayi (IS 6489 - 001)
+2. Simran Khan Pathan (IS 6489 - 001)
+3. Sai Anogna Chittudi (IS 6489 - 090)
+
+We have worked as a team and all of us has equally contributed into the project. To be more specific, Kushal had great role in predictors selection, Simran contributed more for the Team coordination and dataset cross validation and Sai Anogna have contributed more in Data Visualization part. But the model design and checking whether it meets the specifications and also kaggle submissions has done by all collectively to make the project successful.
